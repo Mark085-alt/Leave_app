@@ -1,0 +1,14 @@
+{
+    "Nitesh_Kumar_1": {
+        "employee_id": "6WR_11",
+        "employee_name": "Nitesh Kumar",
+        "leave_type": "Casual Leave",
+        "leave_mode": "Full Day",
+        "start_date": "2024-11-13",
+        "end_date": "2024-11-14",
+        "reason": "bdbbd",
+        "status": "Approved",
+        "date_of_apply": "2024-11-12",
+        "unpaid_leave_days": 0
+    }
+}
