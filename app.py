@@ -609,7 +609,6 @@ def apply():
     profile_photo = employees[user_id].get('profile_photo', 'profiles/default.jpg')
     logging.info(f"User {user_id} ({user_info['employee_name']}) accessed apply page.")
 
-
     if request.method == 'POST':
         logging.info(f"Processing leave application for user {user_id}.")
         leave_type = request.form['leave_type']
@@ -651,7 +650,6 @@ def apply():
                 
                 # Check if there is any overlap with an existing approved leave
                 if (start_date <= existing_end_date) and (end_date >= existing_start_date):
-
                     if leave_mode == 'Half Day' and application['leave_mode'] == 'Half Day' and start_date == existing_start_date:
                         # Check if the user has already applied for two half days on the same date
                         approved_half_days_on_date = sum(
@@ -735,14 +733,15 @@ def apply():
                 error='Insufficient leave balance. Please adjust your leave duration.'
             )
         
-
         logging.info(f"Saving leave application for {user_id}.")
-        
         employee_name = user_info['employee_name'].replace(' ', '_')
         user_applications = [app_id for app_id in data.keys() if app_id.startswith(employee_name)]
+        # Determine the next application number based on existing applications
         next_application_number = len(user_applications) + 1
-        application_id = f"{employee_name}_{next_application_number}"
-
+        # Create a random 4-character token for added uniqueness
+        random_token = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        # Generate the application ID using employee_name, next_application_number, and random token
+        application_id = f"{employee_name}_{next_application_number}_{random_token}"
         data[application_id] = {
             'employee_id': user_id,
             'employee_name': user_info['employee_name'],
@@ -1048,10 +1047,10 @@ def team_leave_status():
 
 @app.route('/status')
 def status():
-    user_id = session['user_id']
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
+    user_id = session['user_id']
     role = session.get('role')
     last_login = session.get('last_login')
     today_date = get_current_date()
@@ -1114,16 +1113,18 @@ def approve(application_id):
     logging.info(f"Approve route accessed by {approver_name} (ID: {approver_id}, Role: {approver_role}) "
                  f"for application_id {application_id} at {approval_time}.")
     
+
     data = load_data()
     if application_id in data:
         logging.info(f"Application found for {application_id}. Approving leave.")
-
         application = data[application_id]
 
         if data[application_id]['status'] in ['Approved', 'Denied']:
             logging.info(f"Leave application {application_id} for {employee_name} (ID: {employee_id}) "
                          f"is already {application['status']} by another approver.")
             return f"Leave already {application['status']}."
+        elif data[application_id]['status'] in ['Revoked']:
+                return "Leave revoked by user."
 
         leave_type = data[application_id]['leave_type']
         leave_mode = data[application_id]['leave_mode']
@@ -1249,16 +1250,15 @@ def approve(application_id):
         # Send styled email to HR
         send_hr_approval_notification_email(hr_email, employee_name, leave_type, leave_mode, start_date, end_date)
 
-    else:
-        logging.warning(f"Application {application_id} not found.")
-        return 'Application not found'
+
 
         # Additional code to notify HR, etc., if needed
-    return "Leave approved successfully."
+        return "Leave approved successfully."
 
 
 @app.route('/deny/<application_id>')
 def deny(application_id):
+
     logging.info(f"Deny route accessed for application_id {application_id}.")
 
     approver_id = session.get('user_id')
@@ -1303,9 +1303,6 @@ def deny(application_id):
         send_hr_denial_notification_email(hr_email, employee_name, leave_type, leave_mode, start_date, end_date)
         logging.info(f"Denial email sent for application_id {application_id}.")
 
-    else:
-        logging.warning(f"Application {application_id} not found.")
-    
     return "Leave denied successfully."
 
 
@@ -1465,11 +1462,9 @@ def apply_reimbursement():
     today_date = get_current_date()
     user_name = user_info['employee_name']
     profile_photo = employees[user_id].get('profile_photo', 'profiles/default.jpg')
-    logging.info(f"User {user_id} ({user_info['employee_name']}) accessed reimbursement page")
 
     if request.method == 'POST':
         try:
-            logging.info(f"Processing reimbursement application for user {user_id}.")
             reimbursement_type = request.form.get('reimbursement_type')
             reason = request.form.get('reason')
             num_days = None
@@ -1541,13 +1536,12 @@ def apply_reimbursement():
 
             # Send email without attachment, just with a link to the proof
             send_email(subject, user_info['manager_email'], body)
-            logging.info("reimbursement mail sent successfully")
+
             flash('Reimbursement application submitted successfully.', 'success')
 
         except Exception as e:
             flash(f'Error applying for reimbursement: {str(e)}', 'danger')
             print(f"Error: {str(e)}")  # Log the error for debugging
-            logging.info("failed,reimbursement mail not sent")
 
         return redirect(url_for('apply_reimbursement'))
 
@@ -1577,7 +1571,7 @@ def send_email_with_attachment(subject, recipient, body, attachment):
 
         # Get the filename and determine its MIME type
         filename = os.path.basename(attachment)
-        mime_type, _ = mime_type.guess_type(attachment)
+        mime_type, _ = mimetypes.guess_type(attachment)
         mime_type = mime_type or 'application/octet-stream'  # Fallback if MIME type cannot be guessed
 
         with open(attachment, 'rb') as attachment_file:
@@ -1615,12 +1609,13 @@ def send_email_with_attachment(subject, recipient, body, attachment):
     
 @app.route('/approve_reimbursement/<reimbursement_id>')
 def approve_reimbursement(reimbursement_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
     reimbursement_data = load_reimbursement_data()
     
     if reimbursement_id in reimbursement_data:
         if reimbursement_data[reimbursement_id]['status'] == 'Approved':
             return "Reimbursement already approved."
-        
 
         # Update reimbursement status to Approved
         reimbursement_data[reimbursement_id]['status'] = 'Approved'
@@ -1674,7 +1669,6 @@ def approve_reimbursement(reimbursement_id):
             hr_subject = f"Reimbursement Approved for {employee_name}"
             hr_body = f"Reimbursement for {employee_name} has been approved for the amount of {amount}."
             send_email(hr_subject, hr_email, hr_body)
-            logging.info(f"Reimbursement aproved successfully. {reimbursement_id}")
 
         # Handle "Incentive" type
         elif reimbursement_type == 'Incentive':
@@ -1724,7 +1718,7 @@ def deny_reimbursement(reimbursement_id):
 
         # Send denial email with HTML template
         send_reimbursement_denial_email(employee_email, employee_name, reimbursement_type, amount, reason)
-        logging.info(f"Reimbursement denied successfully for {reimbursement_id}")
+
         return "Reimbursement denied successfully."
     else:
         return "Reimbursement not found."
@@ -1997,7 +1991,6 @@ def view_salary_slip(month_year):
 
 @app.route('/revoke_leave/<application_id>', methods=['GET', 'POST'])
 def revoke_leave(application_id):
-    logging.info(f"Revoke route accessed for application_id {application_id}.")
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
@@ -2014,94 +2007,95 @@ def revoke_leave(application_id):
         if leave_application['status'] not in ['Approved', 'Pending']:
             return "Leave cannot be revoked.", 400
 
-        # Revoke leave logic
-        leave_type = leave_application['leave_type']
-        leave_mode = leave_application['leave_mode']
-        start_date = parse_date(leave_application['start_date'])
-        end_date = parse_date(leave_application['end_date'])
-        leave_days = (end_date - start_date).days + 1
+        # Only update leave balances if the status is "Approved"
+        if leave_application['status'] == 'Approved':
+            leave_type = leave_application['leave_type']
+            leave_mode = leave_application['leave_mode']
+            start_date = parse_date(leave_application['start_date'])
+            end_date = parse_date(leave_application['end_date'])
+            leave_days = (end_date - start_date).days + 1
 
-        # Handle Half Day logic
-        if leave_mode == 'Half Day':
-            leave_days = leave_days / 2
+            # Handle Half Day logic
+            if leave_mode == 'Half Day':
+                leave_days = leave_days / 2
 
-        unpaid_early_wfh_leave_df = load_unpaid_early_wfh_leave_df()
-        cl_sl_leave_df = load_cl_sl_leave_df()
+            unpaid_early_wfh_leave_df = load_unpaid_early_wfh_leave_df()
+            cl_sl_leave_df = load_cl_sl_leave_df()
 
-        # Update balances for the specific leave type
-        if leave_type == 'Casual Leave':
-            # Add back the exact number of days that were initially deducted
-            cl_sl_leave_df.loc[
-                cl_sl_leave_df['Employee ID'] == user_id, 'CL_Balance'
-            ] += leave_days
+            # Update balances for the specific leave type if approved
+            if leave_type == 'Casual Leave':
+                cl_sl_leave_df.loc[
+                    cl_sl_leave_df['Employee ID'] == user_id, 'CL_Balance'
+                ] += leave_days
 
-        elif leave_type == 'Sick Leave':
-            cl_sl_leave_df.loc[
-                cl_sl_leave_df['Employee ID'] == user_id, 'SL_Balance'
-            ] += leave_days
+            elif leave_type == 'Sick Leave':
+                cl_sl_leave_df.loc[
+                    cl_sl_leave_df['Employee ID'] == user_id, 'SL_Balance'
+                ] += leave_days
 
-        elif leave_type == 'Compensatory Off':
-            cl_sl_leave_df.loc[
-                cl_sl_leave_df['Employee ID'] == user_id, 'Comp_Off_Taken'
-            ] += leave_days
+            elif leave_type == 'Compensatory Off':
+                cl_sl_leave_df.loc[
+                    cl_sl_leave_df['Employee ID'] == user_id, 'Comp_Off_Taken'
+                ] += leave_days
 
-        elif leave_type == 'Unpaid Leave':
-            unpaid_early_wfh_leave_df.loc[
-                (unpaid_early_wfh_leave_df['Employee ID'] == user_id) & 
-                (unpaid_early_wfh_leave_df['Month'] == start_date.strftime('%Y-%m')),
-                'Unpaid_Leave_Taken'
-            ] -= leave_days
+            elif leave_type == 'Unpaid Leave':
+                unpaid_early_wfh_leave_df.loc[
+                    (unpaid_early_wfh_leave_df['Employee ID'] == user_id) & 
+                    (unpaid_early_wfh_leave_df['Month'] == start_date.strftime('%Y-%m')),
+                    'Unpaid_Leave_Taken'
+                ] -= leave_days
 
-        elif leave_type == 'Work from Home':
-            unpaid_early_wfh_leave_df.loc[
-                (unpaid_early_wfh_leave_df['Employee ID'] == user_id) & 
-                (unpaid_early_wfh_leave_df['Month'] == start_date.strftime('%Y-%m')),
-                'WFH_Taken'
-            ] -= leave_days
+            elif leave_type == 'Work from Home':
+                unpaid_early_wfh_leave_df.loc[
+                    (unpaid_early_wfh_leave_df['Employee ID'] == user_id) & 
+                    (unpaid_early_wfh_leave_df['Month'] == start_date.strftime('%Y-%m')),
+                    'WFH_Taken'
+                ] -= leave_days
 
-        elif leave_type == 'Early Leave':
-            unpaid_early_wfh_leave_df.loc[
-                (unpaid_early_wfh_leave_df['Employee ID'] == user_id) & 
-                (unpaid_early_wfh_leave_df['Month'] == start_date.strftime('%Y-%m')),
-                'Early_Leave_Taken'
-            ] -= 1
+            elif leave_type == 'Early Leave':
+                unpaid_early_wfh_leave_df.loc[
+                    (unpaid_early_wfh_leave_df['Employee ID'] == user_id) & 
+                    (unpaid_early_wfh_leave_df['Month'] == start_date.strftime('%Y-%m')),
+                    'Early_Leave_Taken'
+                ] -= 1
 
-        elif leave_type == 'Compensatory Pay':
-            unpaid_early_wfh_leave_df.loc[
-                (unpaid_early_wfh_leave_df['Employee ID'] == user_id) & 
-                (unpaid_early_wfh_leave_df['Month'] == start_date.strftime('%Y-%m')),
-                'Comp_Pay_Taken'
-            ] -= leave_days
+            elif leave_type == 'Compensatory Pay':
+                unpaid_early_wfh_leave_df.loc[
+                    (unpaid_early_wfh_leave_df['Employee ID'] == user_id) & 
+                    (unpaid_early_wfh_leave_df['Month'] == start_date.strftime('%Y-%m')),
+                    'Comp_Pay_Taken'
+                ] -= leave_days
 
-        elif leave_type == 'Birthday/Anniversary':
-            cl_sl_leave_df.loc[
-                cl_sl_leave_df['Employee ID'] == user_id, 'Birthday/Aniversary'
-            ] -= 1
+            elif leave_type == 'Birthday/Anniversary':
+                cl_sl_leave_df.loc[
+                    cl_sl_leave_df['Employee ID'] == user_id, 'Birthday/Anniversary'
+                ] -= 1
+
+            # Save updated leave data
+            save_unpaid_early_wfh_leave_df(unpaid_early_wfh_leave_df)
+            save_cl_sl_leave_df(cl_sl_leave_df)
 
         # Mark the leave application as revoked
         data[application_id]['status'] = 'Revoked'
         save_data(data)
-
-        # Save updated leave data
-        save_unpaid_early_wfh_leave_df(unpaid_early_wfh_leave_df)
-        save_cl_sl_leave_df(cl_sl_leave_df)
 
         # Notify via socket
         socketio.emit('update', {'action': 'revoke', 'application_id': application_id})
 
         # Send email to HR or manager
         manager_email = employees[data[application_id]['employee_id']]['manager_email']
-        hr_email="manish@6wresearch.com"
+        hr_email = "manish@6wresearch.com"
         subject = "Leave Revocation Notification"
         body = f"{leave_application['employee_name']} has revoked their leave from {leave_application['start_date']} to {leave_application['end_date']}."
         send_email(subject, manager_email, body)
-        send_email(subject,hr_email, body)
+        send_email(subject, hr_email, body)
+        
         flash('Leave revoked successfully.', 'success')
-        logging.info(f"Leave revoked successfully for {application_id}.")
         return redirect(url_for('status'))
 
     # GET request to confirm revocation
     return render_template('status.html', application_id=application_id)
+
 
 
 
