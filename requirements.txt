@@ -13,3 +13,4 @@ reportlab
 SMTPEmail
 secure-smtplib
 gunicorn
+python-json-logger
